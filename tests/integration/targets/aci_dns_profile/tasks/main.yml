@@ -1,6 +1,6 @@
 # Test code for the ACI modules
 # Copyright: (c) 2021, Tim Cragg (@timcragg)
-
+# Copyright: (c) 2024, Eduardo Pozo (@timcragg) <ep@devkom.no>
 # GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 - name: Test that we have an ACI APIC host, ACI username and ACI password
@@ -8,7 +8,6 @@
     msg: 'Please define the following variables: aci_hostname, aci_username and aci_password.'
   when: aci_hostname is not defined or aci_username is not defined or aci_password is not defined
 
-# GET Credentials from the inventory
 - name: Set vars
   ansible.builtin.set_fact:
     aci_info: &aci_info
@@ -20,11 +19,19 @@
       use_proxy: '{{ aci_use_proxy | default(true) }}'
       output_level: debug
 
+# CLEAN ENVIRONMENT
+- name: Clean DNS profile
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    profile_name: ansible_dns_profile
+    state: absent
+
 # ADD DNS PROFILE
 - name: Add DNS profile
   cisco.aci.aci_dns_profile:
     <<: *aci_info
     profile_name: ansible_dns_profile
+    oob_epg: default
     state: present
   register: add_dns_profile
 
@@ -34,6 +41,7 @@
     - add_dns_profile is changed
     - add_dns_profile.current.0.dnsProfile.attributes.annotation == 'orchestrator:ansible'
     - add_dns_profile.current.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - add_dns_profile.current.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-default"
     - add_dns_profile.current.0.dnsProfile.attributes.name == "ansible_dns_profile"
 
 # ADD DNS PROFILE AGAIN TO TEST IDEMPOTENCE
@@ -41,6 +49,7 @@
   cisco.aci.aci_dns_profile:
     <<: *aci_info
     profile_name: ansible_dns_profile
+    oob_epg: default
     state: present
   register: add_dns_profile_again
 
@@ -49,6 +58,7 @@
     that:
     - add_dns_profile_again is not changed
     - add_dns_profile_again.current.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - add_dns_profile_again.current.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-default"
     - add_dns_profile_again.current.0.dnsProfile.attributes.name == "ansible_dns_profile"
 
 # QUERY DNS PROFILE
@@ -64,6 +74,7 @@
     that:
     - query_dns_profile is not changed
     - query_dns_profile.current.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - query_dns_profile.current.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-default"
     - query_dns_profile.current.0.dnsProfile.attributes.name == "ansible_dns_profile"
 
 - name: Query all DNS profiles
@@ -91,6 +102,7 @@
     - remove_dns_profile is changed
     - remove_dns_profile.current == []
     - remove_dns_profile.previous.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - remove_dns_profile.previous.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-default"
     - remove_dns_profile.previous.0.dnsProfile.attributes.name == "ansible_dns_profile"
 
 # DELETE DNS PROFILE AGAIN TO TEST IDEMPOTENCE

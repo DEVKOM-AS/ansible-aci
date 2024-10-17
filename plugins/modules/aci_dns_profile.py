@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # Copyright: (c) 2022, Tim Cragg (@timcragg)
+# Copyright: (c) 2024, Eduardo Pozo (@timcragg) <ep@devkom.no>
 # GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
@@ -22,6 +23,11 @@ options:
     - Name of the DNS profile.
     type: str
     aliases: [ name, profile_name ]
+  oob_epg:
+    description:
+    - Management EPG for the profile.
+    type: str
+    aliases: [ mgmt_epg, management_epg ]
   state:
     description:
     - Use C(present) or C(absent) for adding or removing.
@@ -39,6 +45,7 @@ seealso:
   link: https://developer.cisco.com/docs/apic-mim-ref/
 author:
 - Tim Cragg (@timcragg)
+- Eduardo Pozo (@edudppaz)
 """
 
 EXAMPLES = r"""
@@ -48,6 +55,16 @@ EXAMPLES = r"""
     username: admin
     password: SomeSecretPassword
     dns_profile: my_dns_prof
+    state: present
+  delegate_to: localhost
+
+- name: Add a new DNS profile with an OOB Management EPG
+  cisco.aci.aci_dns_profile:
+    host: apic
+    username: admin
+    password: SomeSecretPassword
+    dns_profile: my_dns_prof
+    oob_epg: default
     state: present
   delegate_to: localhost
 
@@ -194,6 +211,7 @@ def main():
     argument_spec.update(aci_annotation_spec())
     argument_spec.update(
         dns_profile=dict(type="str", aliases=["name", "profile_name"]),
+        oob_epg=dict(type="str", aliases=["mgmt_epg", "management_epg"]),
         state=dict(type="str", default="present", choices=["absent", "present", "query"]),
     )
 
@@ -208,7 +226,8 @@ def main():
 
     dns_profile = module.params.get("dns_profile")
     state = module.params.get("state")
-    child_classes = ["dnsProv", "dnsDomain"]
+    oob_epg = module.params.get("oob_epg")
+    child_classes = ["dnsProv", "dnsDomain", "dnsRsProfileToEpg"]
 
     aci = ACIModule(module)
     aci.construct_url(
@@ -224,9 +243,17 @@ def main():
     aci.get_existing()
 
     if state == "present":
+        child_configs = []
+
+        if oob_epg is not None:
+            child_configs.append(
+                {"dnsRsProfileToEpg": {"attributes": {"status": "deleted"} if oob_epg == "" else {"tDn": "uni/tn-mgmt/mgmtp-default/oob-{0}".format(oob_epg)}}}
+            )
+
         aci.payload(
             aci_class="dnsProfile",
             class_config=dict(name=dns_profile),
+            child_configs=child_configs,
         )
 
         aci.get_diff(aci_class="dnsProfile")
